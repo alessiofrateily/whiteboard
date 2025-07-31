@@ -1,0 +1,18 @@
+{
+  "items": [
+    {
+      "product_name": "Jacket",
+      "material": "Leather",
+      "origin": "Italy",
+      "date": "2024-01-15",
+      "warranty": "2 years"
+    },
+    {
+      "product_name": "Bag",
+      "material": "Organic Cotton",
+      "origin": "Spain",
+      "date": "2024-02-20",
+      "warranty": "1 year"
+    }
+  ]
+}
