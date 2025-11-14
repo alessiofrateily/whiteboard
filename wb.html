@@ -1,511 +1,705 @@
-<!DOCTYPE html encoding="utf-8">
-
-<html manifest="whiteboard.mf">
-
+<!DOCTYPE html>
+<html lang="en">
 <head>
-    <title>WhiteBoard</title>
-
-    <meta name="application-name" content="WhiteBoard" />
-    <meta name="author" content="Paolo Caressa" />
-
-    <!-- SmartPhone Stuff -->
-    <meta name="handheldfriendly" content="yes" />
-    
-    <!-- No telephone number detections -->
-    <meta name="format-detection" content="telephone=no" />
-
-    <!-- iPhone stuff -->
-    <meta name="viewport" content="user-scalable=no, width=device-width" /> 
-    <meta name="apple-mobile-web-app-capable" content="yes" /> 
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-<!--
-    <link rel="apple-touch-icon" href="./whiteboard_57x57.png" sizes="57x57" />
-    <link rel="apple-touch-icon" href="./whiteboard_114x114.png" sizes="114x114" />
-    <link rel="apple-touch-icon-precomposed" href="./whiteboard_57x57.png" sizes="57x57" />
-    <link rel="apple-touch-icon-precomposed" href="./whiteboard_114x114.png" sizes="114x114" />
-    <link rel="apple-touch-startup-image" href="./whiteboard.png" media="(device-width: 640px)" sizes="640x920" />
-    <link rel="apple-touch-startup-image" href="./whiteboard_320x460.png" media="(device-width: 320px)" sizes="320x460" />
--->
-    <style>
-        @media screen {
-            body {
-                color: white;
-                background-color: black;
-                font-family: sans-serif; font-size: 1em;
-                margin: 0;
-                padding: 0;
-                text-align: justify;
-            }
-            canvas {
-                color: black;
-                background-color: white;
-            }
-        }
-
-        @media handheld {
-            body {
-                color: white;
-                background-color: black;
-                font-family: courier; font-size: 5%;
-                margin: 0;
-                padding: 0;
-                text-align: justify;
-            }
-            canvas {
-                color: black;
-                background-color: white;
-            }
-        }
-    </style>
-
-
-    <script type="text/javascript">
-//<![CDATA[
-
-var VERSION = "1.0";
-
-// var HSIZE = 320, VSIZE = 320;
-// var HSIZE = screen.availWidth, VSIZE = screen.availHeight;
-var HSIZE = window.innerWidth, VSIZE = window.innerHeight;
-
-var COLORI = [
-    "#000000",
-    "#0000FF",
-    "#00FF00",
-    "#FF0000",
-    "#FFFFFF",
-];
-var N_COLORI = COLORI.length;
-
-var N_PULSANTI = 15; // Penna, linea, rettangolo, rettangolo pieno, cerchio, cerchio pieno, undo, "+", "-", cancella, nuova slide, slide prima, slide dopo, prima slide, ultima slide
-
-var BSIZE = VSIZE * 0.05;
-var BSIZE = VSIZE / (N_COLORI + N_PULSANTI);
-
-var PEN_FGCOLOR = "#000000";
-var PEN_BGCOLOR = "#FFFFFF";
-var PEN_WIDTH = 3;  /// spessore del tratto che si disegna
-
-var MODES = "PLcCrR";
-var MODE = "P"; /// modo del disegno: Punti, Linee, Cerchi pieni, cerchi, Rettangoli pieni, rettangoli
-
-var MOUSE_DOWN = false;
-
-var XLAST = -1, YLAST = -1;     /// coord dell'ultimo punto disegnato
-
-/// SLIDES contiene l'elenco delle immagini che fanno da sfondo
-var SLIDES = [];
-
-/// Indice in SLIDES della slide corrente.
-var SLIDE_CURRENT = 0;
-
-/// IMAGE_LAST e' uno stack di immagini per gli undo
-var IMAGE_LAST = [];
-
-/// IMAGE_TEMP e' usato per salvare il disegno mentre si sposta il mouse per
-/// disegnare un rettangolo o un cerchio che vengono mostrati solo temporaneamente
-var IMAGE_TEMP = null;
-
-/// Inizializzazione
-function whiteboard_init()
-{
-    var c = document.getElementById("grafico");
-    c.width = HSIZE;
-    c.height = VSIZE;
-    c.lineWidth = PEN_WIDTH;
-
-    var ctx = c.getContext("2d");
-    var img_list = document.images;
-    
-    for (var i = 0; i < img_list.length; ++ i ) {
-        var img = img_list[i];
-        ctx.drawImage(img, (BSIZE+ (HSIZE-img.width))/2, (VSIZE-img.height)/2);
-        SLIDES[SLIDE_CURRENT] = ctx.getImageData(BSIZE, 0, HSIZE, VSIZE);
-        ++ SLIDE_CURRENT;
-    }
-    SLIDE_CURRENT = 0
-
-    whiteboard_clear();
-    whiteboard_bar();
-    whiteboard_slide_save();
-    whiteboard_saveimage();
-}
-
-/// Cancella lo schermo
-function whiteboard_clear()
-{
-    var ctx = document.getElementById("grafico").getContext("2d");
-    //ctx.fillStyle = PEN_BGCOLOR;
-    //ctx.fillRect(0, 0, HSIZE, VSIZE);
-    // ctx.putImageData(SLIDES[SLIDE_CURRENT], BSIZE, 0);
-    if ( IMAGE_LAST.length > 0 ) {
-        ctx.putImageData(IMAGE_LAST[0], BSIZE, 0);
-        IMAGE_LAST = [ IMAGE_LAST[0] ];
-    } else {
-        ctx.putImageData(SLIDES[SLIDE_CURRENT], BSIZE, 0);
-    }
-}
-
-/// Salva la slide corrente
-function whiteboard_slide_save()
-{
-    var c = document.getElementById("grafico");
-    var ctx = c.getContext("2d");
-    if ( SLIDES.length == 0 ) {
-        SLIDE_CURRENT = 0;
-        SLIDES = [ctx.getImageData(BSIZE, 0, HSIZE, VSIZE)];
-    } else {
-        SLIDES[SLIDE_CURRENT] = ctx.getImageData(BSIZE, 0, HSIZE, VSIZE);
-    }
-    // Distrugge lo stack degli undo
-    IMAGE_LAST = [];
-}
-
-/// Mostra la slide corrente
-function whiteboard_slide_show()
-{
-    var c = document.getElementById("grafico");
-    var ctx = c.getContext("2d");
-    ctx.putImageData(SLIDES[SLIDE_CURRENT], BSIZE, 0);
-}
-
-/// Salva l'immagine corrente su un imagedata 
-function whiteboard_saveimage()
-{
-    var c = document.getElementById("grafico");
-    var ctx = c.getContext("2d");
-    IMAGE_LAST.unshift(ctx.getImageData(BSIZE, 0, HSIZE, VSIZE));
-}
-
-/// Recupera l'immagine salvata
-function whiteboard_restoreimage()
-{
-    var c = document.getElementById("grafico");
-    var ctx = c.getContext("2d");
-    if ( IMAGE_LAST.length > 0 ) {
-        ctx.putImageData(IMAGE_LAST[0], BSIZE, 0);
-        IMAGE_LAST.shift();
-    }
-}
-
-/// Ridisegna la barra degli strumenti
-function whiteboard_bar()
-{
-    // Lettera che determina il modo di disegno
-    var ctx = document.getElementById("grafico").getContext("2d");
-
-    // Disegna lo sfondo dell'area senza barra
-    ctx.fillStyle = "#FFFFFF";
-    ctx.fillRect(0, 0, BSIZE, (N_COLORI+N_PULSANTI)*BSIZE);
-
-    // Disegna i pulsanti: "<", "+", "-"
-    ctx.font = (BSIZE*0.8) + "pt Courier";
-    ctx.fillStyle = PEN_FGCOLOR;
-    // ctx.fillText(MODE, 1, BSIZE-1);
-    ctx.fillText("•", 0, BSIZE);   // punto
-    ctx.fillText("\\", 0, BSIZE*2);   // linea  
-    ctx.fillText("⭘", 0, BSIZE*3);   // cerchio vuoto
-    ctx.fillText("⬤", 0, BSIZE*4);   // cerchio pieno
-    ctx.fillText("☐", 0, BSIZE*5);   // rettangolo vuoto
-    ctx.fillText("∎", 0, BSIZE*6);   // rettangolo pieno
-    ctx.fillStyle = "#000000";
-    ctx.fillText("↺", 0, BSIZE*7);   // undo
-    ctx.fillText("+", 0, BSIZE*8);
-    ctx.fillText("-", 0, BSIZE*9);
-    ctx.fillText("C", 0, BSIZE*10);
-    ctx.fillText("N", 0, BSIZE*11);
-    ctx.fillText("◄", 0, BSIZE*12);
-    ctx.fillText("►", 0, BSIZE*13);
-    ctx.fillText("⏮", 0, BSIZE*14);
-    ctx.fillText("⏭", 0, BSIZE*15);
-
-    // Disegna la barra dei colori in alto.
-    for ( var i = 0; i < N_COLORI; ++ i ) {
-        ctx.fillStyle = COLORI[i];
-        ctx.fillRect(0, (N_PULSANTI+i)*BSIZE, BSIZE, (N_PULSANTI+1+i)*BSIZE);
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hosty Dashboard</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --sidebar-bg: #101010;
+      --sidebar-active: #0fa958;
+      --bg-grey: #f6f7f8;
+      --green: #1ac45c;
+      --red: #d9584a;
+      --banner-green: #0c8f43;
+      --text-dark: #1a1a1a;
+      --text-muted: #6b7280;
+      --border-radius: 12px;
+      --card-padding: 24px;
     }
 
-    // Disegna il contorno e la griglia della barra
-    ctx.strokeStyle = "#000000";
-    ctx.beginPath();
-    ctx.lineWidth = 1;
-    ctx.rect(0, 0, BSIZE, (N_COLORI + N_PULSANTI)*BSIZE);
-    for ( i = 0; i < N_COLORI + N_PULSANTI; ++ i ) {
-        ctx.moveTo(0, BSIZE*i);
-        ctx.lineTo(BSIZE, BSIZE*i);
+    * {
+      box-sizing: border-box;
     }
-    ctx.stroke();
-    ctx.closePath();
-    ctx.lineWidth = PEN_WIDTH;  // IMPORTANTE
-}
 
-/// Gestisce un click: se sulla barra degli strumenti esegue un comando
-function whiteboard_click( x, y )
-{
-    if ( x < BSIZE && y > 0 ) {
-        // In base al valore di y decide su quale pulsante si e' cliccato:
-        if ( y < BSIZE ) {
-            // Seleziona tratto pen
-            MODE = MODES[0];
-        } else if ( y < BSIZE * 2 ) {
-            // Seleziona linea
-            MODE = MODES[1];
-        } else if ( y < BSIZE * 3 ) {
-            // Seleziona rettangolo vuoto
-            MODE = MODES[2];
-        } else if ( y < BSIZE * 4 ) {
-            // Seleziona rettangolo pieno
-            MODE = MODES[3];
-        } else if ( y < BSIZE * 5 ) {
-            // Seleziona cerchio vuoto
-            MODE = MODES[4];
-        } else if ( y < BSIZE * 6 ) {
-            // Seleziona cerchio pieno
-            MODE = MODES[5];
-        } else if ( y < BSIZE * 7 ) {
-            // UNDO
-            whiteboard_restoreimage();
-        } else if ( y < BSIZE * 8 ) {
-            // Premuto il pulsante "+"
-            if ( PEN_WIDTH < BSIZE ) {
-                PEN_WIDTH += 2;
-                document.getElementById("grafico").getContext("2d").lineWidth = PEN_WIDTH;
-            }
-        } else if ( y < BSIZE * 9 ) {
-            // Premuto il pulsante "-"
-            if ( PEN_WIDTH > 1 ) {
-                PEN_WIDTH -= 2;
-                document.getElementById("grafico").getContext("2d").lineWidth = PEN_WIDTH;
-            }
-        } else if ( y < BSIZE * 10 ) {
-            // Pulsante "C" cancella lo schermo
-            whiteboard_clear();
-        } else if ( y < BSIZE * 11 ) {
-            // Nuova slide
-            whiteboard_slide_save();
-            whiteboard_clear();
-            if ( SLIDE_CURRENT == SLIDES.length - 1 ) {
-                SLIDES.push(document.getElementById("grafico").getContext("2d").getImageData(BSIZE, 0, HSIZE, VSIZE));
-            } else {
-                SLIDES.splice(SLIDE_CURRENT, 0, document.getElementById("grafico").getContext("2d").getImageData(BSIZE, 0, HSIZE, VSIZE));
-            }
-            ++ SLIDE_CURRENT;
-        } else if ( y < BSIZE * 12 ) {
-            // Slide precedente
-            if ( SLIDE_CURRENT > 0 ) {
-                whiteboard_slide_save();
-                -- SLIDE_CURRENT;
-                whiteboard_slide_show();
-            }
-        } else if ( y < BSIZE * 13 ) {
-            // Slide seguente
-            if ( SLIDE_CURRENT < SLIDES.length - 1 ) {
-                whiteboard_slide_save();
-                ++ SLIDE_CURRENT;
-                whiteboard_slide_show();
-            }
-        } else if ( y < BSIZE * 14 ) {
-            // Prima slide
-            if ( SLIDE_CURRENT > 0 ) {
-                whiteboard_slide_save();
-                SLIDE_CURRENT = 0;
-                whiteboard_slide_show();
-            }
-        } else if ( y < BSIZE * 15 ) {
-            // Ultima slide
-            if ( SLIDE_CURRENT < SLIDES.length - 1 ) {
-                whiteboard_slide_save();
-                SLIDE_CURRENT = SLIDES.length - 1;
-                whiteboard_slide_show();
-            }
-        } else if ( y < BSIZE * (N_PULSANTI + N_COLORI) ) {
-            var i = parseInt((y - BSIZE * N_PULSANTI) / BSIZE);
-            PEN_FGCOLOR = COLORI[i];
-        }
-        whiteboard_bar();
-    } else {
-        XLAST = x;
-        YLAST = y;
+    body {
+      margin: 0;
+      font-family: 'Inter', sans-serif;
+      background: var(--bg-grey);
+      color: var(--text-dark);
+      display: flex;
     }
-}
 
-/// Gestisce quando si preme il mouse o il dito sullo schermo.
-function whiteboard_start(x, y)
-{
-    if ( x < BSIZE ) {
-        whiteboard_click(x, y);
-        MOUSE_DOWN = false;
-    } else {
-        whiteboard_saveimage();
-        MOUSE_DOWN = true;
-        XLAST = x;
-        YLAST = y;
-        whiteboard_move(x, y);
+    .layout {
+      display: flex;
+      width: 100%;
+      min-height: 100vh;
     }
-}
 
-/// Gestisce il movimento del mouse o del dito poggiato sullo schermo
-function whiteboard_move(x, y)
-{
-    if ( MOUSE_DOWN ) {
-        if ( x >= BSIZE ) {
-            var c = document.getElementById("grafico");
-            var ctx = c.getContext("2d");
-            ctx.strokeStyle = PEN_FGCOLOR;
-            ctx.fillStyle = PEN_FGCOLOR;
-            // A seconda di mode fa cose diverse
-            switch ( MODE ) {
-            case "P":   // Disegna una linea tra (XLAST,YLAST) e (x,y)
-                // Disegna un punto
-                ctx.beginPath();
-                ctx.moveTo(XLAST, YLAST);
-                ctx.lineTo(x, y);
-                ctx.stroke();
-                ctx.closePath();
-                break;
-            case "L":   // La linea la disegnera' alla fine
-                if ( IMAGE_TEMP != null ) {
-                    // ripristina il disegno
-                    ctx.putImageData(IMAGE_TEMP, 0, 0);
-                }
-                IMAGE_TEMP = ctx.getImageData(0, 0, HSIZE, VSIZE);
-                // Disegna temporaneamente il rettangolo
-                ctx.beginPath();
-                ctx.moveTo(XLAST, YLAST);
-                ctx.lineTo(x, y);
-                ctx.stroke();
-                ctx.closePath();
-                return; // NON BREAK!!!
-            case "c":   // Il cerchio lo disegnera' alla fine
-            case "C":   // Il cerchio lo disegnera' alla fine
-                // evita che XLAST e YLAST siano aggiornati
-                if ( IMAGE_TEMP != null ) {
-                    // ripristina il disegno
-                    ctx.putImageData(IMAGE_TEMP, 0, 0);
-                }
-                IMAGE_TEMP = ctx.getImageData(0, 0, HSIZE, VSIZE);
-                // Disegna temporaneamente il rettangolo
-                ctx.beginPath();
-                ctx.arc(XLAST, YLAST, Math.sqrt(Math.pow(x-XLAST, 2) + Math.pow(y-YLAST, 2)), 0, 2*Math.PI);
-                if ( MODE == "C" ) ctx.fill();
-                ctx.stroke();
-                ctx.closePath();
-                return; // NON BREAK!!!
-            case "r":   // Il rettangolo lo disegnera' alla fine
-            case "R":   // Il rettangolo lo disegnera' alla fine
-                if ( IMAGE_TEMP != null ) {
-                    // ripristina il disegno
-                    ctx.putImageData(IMAGE_TEMP, 0, 0);
-                }
-                IMAGE_TEMP = ctx.getImageData(0, 0, HSIZE, VSIZE);
-                // Disegna temporaneamente il rettangolo
-                ctx.beginPath();
-                if ( MODE == "r" ) {
-                    ctx.strokeRect(XLAST, YLAST, x - XLAST, y - YLAST);
-                } else {
-                    ctx.fillRect(XLAST, YLAST, x - XLAST, y - YLAST);
-                }
-                ctx.closePath();
-                return; // NON BREAK!!!
-            }
-        }
-        XLAST = x;
-        YLAST = y;
+    .sidebar {
+      width: 260px;
+      background: var(--sidebar-bg);
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      padding: 24px 20px;
     }
-}
 
-
-/*  FATTO MISTERIOSO: la funzione seguente andrebbe richiamata con come parametri
-    (event.clientX, event.clientY) nel caso di mouse o (event.touches[0].clientX,
-    event.touches[0].clientY) nel caso di touchscreen. Se non che, chiamandola
-    cosi' sull'iPhone cancella il cerchio/rettangolo/linea dopo aver lasciato il
-    dito, mentre CHIAMATA SENZA PARAMETRI FUNZIONA!!! Sicuramente i valori delle
-    variabili (x,y) che usa sono quelli con i quali e' stata chiamata whiteboard_move
-    un attimo prima, comunque la cosa e' stranissima!!! */
-
-/// Quando si rilascia il mouse o il dito segna la fine del disegno
-function whiteboard_end(x, y)
-{
-    if ( MOUSE_DOWN ) {
-        var c = document.getElementById("grafico");
-        var ctx = c.getContext("2d");
-        ctx.strokeStyle = PEN_FGCOLOR;
-        ctx.fillStyle = PEN_FGCOLOR;
-        MOUSE_DOWN = false;
-        // Se si e' tracciato un cerchio o una linea li disegna adesso.
-        if ( IMAGE_TEMP != null ) { IMAGE_TEMP = null; } else
-        switch ( MODE ) {
-        case "c":
-        case "C":   // Disegna il cerchio di centro (XLAST,YLAST) passante per (x,y)
-            ctx.beginPath();
-            ctx.arc(XLAST, YLAST, Math.sqrt(Math.pow(x-XLAST, 2) + Math.pow(y-YLAST, 2)), 0, 2*Math.PI);
-            if ( MODE == "C" ) ctx.fill();
-            ctx.stroke();
-            ctx.closePath();
-            break;
-        case "L":   // Disegna il segmento fra (XLAST, YLAST) e (x,y)
-            ctx.strokeStyle = PEN_FGCOLOR;
-            ctx.beginPath();
-            ctx.moveTo(XLAST, YLAST);
-            ctx.lineTo(x, y);
-            ctx.stroke();
-            ctx.closePath();
-            break;
-        case "r":
-        case "R":   // Disegna il rettangolo di vertici opposti (XLAST,YLAST) e (x,y)
-            ctx.strokeStyle = PEN_FGCOLOR;
-            ctx.strokeStyle = PEN_FGCOLOR;
-            ctx.beginPath();
-            if ( MODE == "R" ) {
-                ctx.strokeRect(XLAST, YLAST, x - XLAST, y - YLAST);
-            } else {
-                ctx.fillRect(XLAST, YLAST, x - XLAST, y - YLAST);
-            }
-            ctx.closePath();
-        }
-        whiteboard_bar();
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 36px;
     }
-}
 
-/// Quando si tocca un touchscreen.
-function touch_start(event)
-{
-    event.preventDefault();
-  
-    // Solo un dito e' consentito!!!
-    if ( event.touches.length == 1 ) {
-        whiteboard_start(event.touches[0].clientX, event.touches[0].clientY);
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: var(--sidebar-active);
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      font-size: 18px;
     }
-}
 
+    .logo-text {
+      font-size: 20px;
+      font-weight: 600;
+    }
 
-//]]>
-    </script>
+    .nav {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
 
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      color: rgba(255, 255, 255, 0.8);
+      border-radius: 10px;
+      text-decoration: none;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+
+    .nav-item svg {
+      width: 18px;
+      height: 18px;
+      opacity: 0.9;
+    }
+
+    .nav-item.active,
+    .nav-item:hover {
+      background: var(--sidebar-active);
+      color: #fff;
+    }
+
+    .sidebar-footer {
+      margin-top: 48px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 16px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+    }
+
+    .avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.2);
+      display: grid;
+      place-items: center;
+      font-weight: 600;
+    }
+
+    .user-info {
+      display: flex;
+      flex-direction: column;
+      font-size: 13px;
+    }
+
+    .user-info span:first-child {
+      font-weight: 600;
+    }
+
+    .user-info span:last-child {
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-grey);
+    }
+
+    .topbar {
+      height: 76px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 40px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .search {
+      position: relative;
+      width: 360px;
+    }
+
+    .search input {
+      width: 100%;
+      padding: 12px 16px 12px 40px;
+      border-radius: 999px;
+      border: 1px solid #d1d5db;
+      font-size: 14px;
+      outline: none;
+    }
+
+    .search svg {
+      position: absolute;
+      top: 50%;
+      left: 14px;
+      transform: translateY(-50%);
+      width: 18px;
+      height: 18px;
+      stroke: #6b7280;
+    }
+
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      font-size: 14px;
+    }
+
+    .ai-badge {
+      background: rgba(26, 196, 92, 0.15);
+      color: var(--green);
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .icon-button {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #f3f4f6;
+      display: grid;
+      place-items: center;
+    }
+
+    .add-channel {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--green);
+      color: #fff;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 999px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .content {
+      padding: 32px 40px 48px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    .insight-banner {
+      background: var(--banner-green);
+      color: #fff;
+      padding: 24px 28px;
+      border-radius: var(--border-radius);
+      display: flex;
+      gap: 18px;
+      align-items: flex-start;
+      box-shadow: 0 12px 24px rgba(12, 143, 67, 0.2);
+    }
+
+    .insight-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.15);
+      display: grid;
+      place-items: center;
+      font-size: 22px;
+    }
+
+    .insight-text h3 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .insight-text p {
+      margin: 6px 0 0;
+      font-size: 15px;
+      line-height: 1.5;
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 20px;
+    }
+
+    .kpi-card {
+      background: #fff;
+      border-radius: var(--border-radius);
+      padding: var(--card-padding);
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      box-shadow: 0 8px 20px rgba(15, 169, 88, 0.05);
+    }
+
+    .kpi-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .kpi-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: rgba(15, 169, 88, 0.12);
+      display: grid;
+      place-items: center;
+      color: var(--sidebar-bg);
+    }
+
+    .kpi-change {
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .kpi-change.positive {
+      color: var(--green);
+    }
+
+    .kpi-change.negative {
+      color: var(--red);
+    }
+
+    .kpi-value {
+      font-size: 32px;
+      font-weight: 700;
+    }
+
+    .kpi-label {
+      color: var(--text-muted);
+      font-weight: 500;
+      font-size: 14px;
+    }
+
+    .lower-section {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 24px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: var(--border-radius);
+      padding: var(--card-padding);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      box-shadow: 0 8px 24px rgba(26, 196, 92, 0.06);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .card-header h2 {
+      margin: 0;
+      font-size: 20px;
+    }
+
+    .card-header span {
+      color: var(--text-muted);
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .conversation-list,
+    .call-list {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .conversation-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .conversation-info {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+    }
+
+    .conversation-info .avatar {
+      background: #e5e7eb;
+      color: #9ca3af;
+      width: 48px;
+      height: 48px;
+      font-size: 18px;
+    }
+
+    .conversation-text {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .conversation-text strong {
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .ai-pill {
+      background: rgba(26, 196, 92, 0.15);
+      color: var(--green);
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .conversation-text span {
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .conversation-time {
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    .call-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .call-info {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex: 1;
+    }
+
+    .call-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      background: rgba(15, 169, 88, 0.12);
+      display: grid;
+      place-items: center;
+      color: var(--sidebar-bg);
+    }
+
+    .call-text {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 14px;
+    }
+
+    .call-text strong {
+      font-weight: 600;
+      color: var(--text-dark);
+    }
+
+    .call-text span {
+      color: var(--text-muted);
+    }
+
+    .call-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .badge {
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .badge.success {
+      background: rgba(26, 196, 92, 0.15);
+      color: var(--green);
+    }
+
+    .badge.danger {
+      background: rgba(217, 88, 74, 0.12);
+      color: var(--red);
+    }
+
+    @media (max-width: 1200px) {
+      .topbar {
+        padding: 0 24px;
+      }
+
+      .content {
+        padding: 24px;
+      }
+
+      .lower-section {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 900px) {
+      .sidebar {
+        display: none;
+      }
+
+      .topbar {
+        padding: 0 16px;
+      }
+
+      .search {
+        display: none;
+      }
+
+      .content {
+        padding: 20px;
+      }
+    }
+  </style>
 </head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="logo">
+        <div class="logo-icon">H</div>
+        <span class="logo-text">Hosty</span>
+      </div>
+      <nav class="nav">
+        <a class="nav-item active" href="#">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 9.5 12 3l9 6.5v9.5a1 1 0 0 1-1 1h-6v-6h-4v6H4a1 1 0 0 1-1-1z" />
+          </svg>
+          Dashboard
+        </a>
+        <a class="nav-item" href="#">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H9l-4 4V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z" />
+          </svg>
+          Inbox
+        </a>
+        <a class="nav-item" href="#">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m5 4 15 8-15 8V4z" />
+          </svg>
+          Calls
+        </a>
+        <a class="nav-item" href="#">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4h16v16H4z" /><path d="m4 4 8 8 8-8" />
+          </svg>
+          Emails
+        </a>
+        <a class="nav-item" href="#">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 8 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09c0 .66.38 1.26.97 1.55.59.29 1.3.19 1.79-.3l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06c-.49.49-.59 1.2-.3 1.79.29.59.89.97 1.55.97H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+          Automations
+        </a>
+        <a class="nav-item" href="#">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12h6l3 8 4-16 3 8h4" />
+          </svg>
+          Campaigns
+        </a>
+        <a class="nav-item" href="#">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 3v2M14 3v2M4 11h16M5 5h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" />
+          </svg>
+          Analytics
+        </a>
+        <a class="nav-item" href="#">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 8 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09c0 .66.38 1.26.97 1.55.59.29 1.3.19 1.79-.3l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06c-.49.49-.59 1.2-.3 1.79.29.59.89.97 1.55.97H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+          Settings
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="avatar">AU</div>
+        <div class="user-info">
+          <span>Admin User</span>
+          <span>admin@hosty.com</span>
+        </div>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <div class="search">
+          <input type="text" placeholder="Search conversations, contacts, calls…" />
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="7" />
+            <path d="m20 20-3-3" />
+          </svg>
+        </div>
+        <div class="topbar-actions">
+          <span class="ai-badge">AI is handling 3 active chats</span>
+          <div class="icon-button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#111827" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            </svg>
+          </div>
+          <button class="add-channel">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            Add Channel
+          </button>
+        </div>
+      </header>
+      <section class="content">
+        <div class="insight-banner">
+          <div class="insight-icon">💡</div>
+          <div class="insight-text">
+            <h3>AI Daily Insight</h3>
+            <p>Customers ask mostly about late check-in and parking availability. Consider adding an automated FAQ response.</p>
+          </div>
+        </div>
 
-<body style="background-color:black;" onload="whiteboard_init();" ontouchmove="event.preventDefault();"><canvas id="grafico" name="grafico" onmousedown="whiteboard_start(event.clientX, event.clientY)" onmouseup="whiteboard_end(event.clientX, event.clientY)" onmousemove="whiteboard_move(event.clientX, event.clientY)" ontouchstart="touch_start(event)" ontouchmove="whiteboard_move(event.touches[0].clientX, event.touches[0].clientY)" ontouchend="whiteboard_end()" ><p>Sorry, your browers does not support &lt;canvas&gt; tags (a HTML 5 feature):-(</p></canvas>
-<!-- METTERE QUI LA LISTA DELLE IMMAGINI DEGLI SFONDI -->
-    <img height="600" width="800" hidden src="la_Pagina_01.png" alt="01"></img>
-    <img height="600" width="800" hidden src="la_Pagina_02.png" alt="01"></img>
-    <img height="600" width="800" hidden src="la_Pagina_03.png" alt="01"></img>
-    <img height="600" width="800" hidden src="la_Pagina_04.png" alt="01"></img>
-    <img height="600" width="800" hidden src="la_Pagina_05.png" alt="01"></img>
-    <img height="600" width="800" hidden src="la_Pagina_06.png" alt="01"></img>
-    <img height="600" width="800" hidden src="la_Pagina_07.png" alt="01"></img>
-    <img height="600" width="800" hidden src="la_Pagina_08.png" alt="01"></img>
-    <img height="600" width="800" hidden src="la_Pagina_09.png" alt="01"></img>
-    <img height="600" width="800" hidden src="la_Pagina_10.png" alt="01"></img>
-    <img height="600" width="800" hidden src="la_Pagina_11.png" alt="01"></img>
-    <img height="600" width="800" hidden src="la_Pagina_12.png" alt="01"></img>
-    <img height="600" width="800" hidden src="la_Pagina_13.png" alt="01"></img>
-    <img height="600" width="800" hidden src="la_Pagina_14.png" alt="01"></img>
-    <img height="600" width="800" hidden src="la_Pagina_15.png" alt="01"></img>
-    <img height="600" width="800" hidden src="la_Pagina_16.png" alt="01"></img>
-    <img height="600" width="800" hidden src="la_Pagina_17.png" alt="01"></img>
-    <img height="600" width="800" hidden src="la_Pagina_18.png" alt="01"></img>
-    <img height="600" width="800" hidden src="la_Pagina_19.png" alt="01"></img>
-    <img height="600" width="800" hidden src="la_Pagina_20.png" alt="01"></img>
-    <img height="600" width="800" hidden src="la_Pagina_21.png" alt="01"></img>
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <div class="kpi-icon">💬</div>
+              <span class="kpi-change positive">+12%</span>
+            </div>
+            <div class="kpi-value">24</div>
+            <div class="kpi-label">Active Chats</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <div class="kpi-icon">📞</div>
+              <span class="kpi-change positive">+8%</span>
+            </div>
+            <div class="kpi-value">18</div>
+            <div class="kpi-label">Calls Today</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <div class="kpi-icon">✉️</div>
+              <span class="kpi-change negative">-15%</span>
+            </div>
+            <div class="kpi-value">7</div>
+            <div class="kpi-label">Pending Emails</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <div class="kpi-icon">📈</div>
+              <span class="kpi-change positive">+5%</span>
+            </div>
+            <div class="kpi-value">87%</div>
+            <div class="kpi-label">AI Resolution Rate</div>
+          </div>
+        </div>
+
+        <div class="lower-section">
+          <div class="card">
+            <div class="card-header">
+              <h2>Active Conversations</h2>
+              <span>24 total</span>
+            </div>
+            <div class="conversation-list">
+              <div class="conversation-item">
+                <div class="conversation-info">
+                  <div class="avatar">MR</div>
+                  <div class="conversation-text">
+                    <strong>Maria Rossi <span class="ai-pill">AI</span></strong>
+                    <span>Vorrei prenotare una camera…</span>
+                  </div>
+                </div>
+                <span class="conversation-time">2m ago</span>
+              </div>
+              <div class="conversation-item">
+                <div class="conversation-info">
+                  <div class="avatar">JS</div>
+                  <div class="conversation-text">
+                    <strong>John Smith <span class="ai-pill">AI</span></strong>
+                    <span>What time is checkout?</span>
+                  </div>
+                </div>
+                <span class="conversation-time">5m ago</span>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <h2>Recent Calls</h2>
+              <span>18 today</span>
+            </div>
+            <div class="call-list">
+              <div class="call-item">
+                <div class="call-info">
+                  <div class="call-icon">📞</div>
+                  <div class="call-text">
+                    <strong>Anna Verdi</strong>
+                    <span>Asked about late check-in options</span>
+                  </div>
+                </div>
+                <div class="call-meta">
+                  <span class="call-duration">3:24</span>
+                  <span class="badge success">AI Handled</span>
+                </div>
+              </div>
+              <div class="call-item">
+                <div class="call-info">
+                  <div class="call-icon">📞</div>
+                  <div class="call-text">
+                    <strong>David Brown</strong>
+                    <span>No voicemail left</span>
+                  </div>
+                </div>
+                <div class="call-meta">
+                  <span class="call-duration">1:02</span>
+                  <span class="badge danger">Missed</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
 </body>
 </html>
